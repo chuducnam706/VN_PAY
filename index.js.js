@@ -25,7 +25,7 @@ app.get('/api/payment/create-url', (req, res) => {
     
     // Sau khi thanh toán xong, VNPAY sẽ chuyển hướng về trang này
     // Sử dụng domain công khai thay vì localhost
-    const returnUrl = process.env.RETURN_URL || "http://localhost:3000/api/payment/return"; 
+    const returnUrl = "https://bookingmovie.onrender.com/api/payment/return"; 
 
     let date = new Date();
     let createDate = moment(date).format('YYYYMMDDHHmmss');
@@ -127,7 +127,7 @@ function getClientIp(req) {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("-----------------------------------------");
-    console.log(`SERVER ĐANG CHẠY TẠI: http://localhost:${PORT}`);
-    console.log(`LINK TEST THANH TOÁN: http://localhost:${PORT}/api/payment/create-url?amount=50000`);
+    console.log(`SERVER ĐANG CHẠY TẠI: https://bookingmovie.onrender.com`);
+    console.log(`LINK TEST THANH TOÁN: https://bookingmovie.onrender.com/api/payment/create-url?amount=50000`);
     console.log("-----------------------------------------");
 });
