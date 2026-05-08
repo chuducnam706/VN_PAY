@@ -1,219 +1,293 @@
-const express = require('express');
-const crypto = require('crypto');
-const moment = require('moment');
-const cors = require('cors');
+const express = require("express");
+const crypto = require("crypto");
+const moment = require("moment");
+const cors = require("cors");
 
 const app = express();
+
+/* =========================
+   MIDDLEWARE
+========================= */
 
 app.use(express.json());
 app.use(cors());
 
-// ======================
-// API TẠO LINK THANH TOÁN
-// ======================
-app.get('/api/payment/create-url', (req, res) => {
+/* =========================
+   CONFIG VNPAY
+========================= */
 
-    // Lấy amount và orderInfo từ query
-    const amount = req.query.amount || 50000;
+const CONFIG = {
 
-    // Nếu không truyền orderInfo thì dùng mặc định
-    const orderInfo =
-        req.query.orderInfo || 'Thanh toan mac dinh';
+    tmnCode: "VBDRQZWZ",
 
-    // Tạo mã đơn hàng
-    const orderId =
-        moment(new Date()).format('YYYYMMDDHHmmss');
+    secretKey:
+        "COVWQRQMQJ8RTAWRH3GXMEGYTIOZ60WV",
 
-    // Cấu hình VNPAY
-    const tmnCode = "VBDRQZWZ";
-    const secretKey = "COVWQRQMQJ8RTAWRH3GXMEGYTIOZ60WV";
+    vnpUrl:
+        "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
 
-    const vnpUrl =
-        "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
+    returnUrl:
+        "https://bookingmovie.onrender.com/api/payment/return"
+};
 
-    const returnUrl =
-        "https://bookingmovie.onrender.com/api/payment/return";
+/* =========================
+   HELPER
+========================= */
 
-    const createDate =
-        moment(new Date()).format('YYYYMMDDHHmmss');
+// Sort object theo alphabet
+function sortObject(obj) {
 
-    // Params gửi sang VNPAY
-    let vnp_Params = {
-        'vnp_Version': '2.1.0',
-        'vnp_Command': 'pay',
-        'vnp_TmnCode': tmnCode,
-        'vnp_Locale': 'vn',
-        'vnp_CurrCode': 'VND',
-
-        'vnp_TxnRef': orderId,
-
-        // Nội dung thanh toán
-        'vnp_OrderInfo': orderInfo,
-
-        'vnp_OrderType': 'other',
-
-        // VNPAY yêu cầu nhân 100
-        'vnp_Amount': amount * 100,
-
-        'vnp_ReturnUrl': returnUrl,
-
-        'vnp_IpAddr': getClientIp(req),
-
-        'vnp_CreateDate': createDate,
-    };
-
-    // Sắp xếp param
-    vnp_Params = Object.keys(vnp_Params)
+    return Object.keys(obj)
         .sort()
-        .reduce((obj, key) => {
-            obj[key] = vnp_Params[key];
-            return obj;
+        .reduce((result, key) => {
+
+            result[key] = obj[key];
+
+            return result;
+
         }, {});
+}
 
-    // Tạo secure hash
+// Tạo Secure Hash
+function createSecureHash(data, secretKey) {
+
     const signData =
-        new URLSearchParams(vnp_Params).toString();
+        new URLSearchParams(data).toString();
 
-    const hmac =
-        crypto.createHmac("sha512", secretKey);
+    return crypto
+        .createHmac("sha512", secretKey)
+        .update(Buffer.from(signData, "utf-8"))
+        .digest("hex");
+}
 
-    const signed =
-        hmac
-            .update(Buffer.from(signData, 'utf-8'))
-            .digest("hex");
+// Lấy IP client
+function getClientIp(req) {
 
-    // Link thanh toán cuối cùng
-    const finalPaymentUrl =
-        vnpUrl +
-        '?' +
-        signData +
-        '&vnp_SecureHash=' +
-        signed;
+    return (
+        req.headers["x-forwarded-for"]
+            ?.split(",")[0]
+            .trim()
+        ||
+        req.headers["x-real-ip"]
+        ||
+        req.socket.remoteAddress
+        ||
+        "127.0.0.1"
+    );
+}
 
-    // Response
-    res.status(200).json({
-        status: "success",
-        orderId: orderId,
-        amount: amount,
-        orderInfo: orderInfo,
-        paymentUrl: finalPaymentUrl
-    });
-});
+/* =========================
+   CREATE PAYMENT URL
+========================= */
 
-// ======================
-// API RETURN TỪ VNPAY
-// ======================
-app.get('/api/payment/return', (req, res) => {
+app.get("/api/payment/create-url", (req, res) => {
 
-    let vnp_Params = req.query;
+    try {
 
-    const secretKey =
-        "COVWQRQMQJ8RTAWRH3GXMEGYTIOZ60WV";
+        // Lấy amount
+        const amount =
+            Number(req.query.amount) || 50000;
 
-    const secureHash =
-        vnp_Params['vnp_SecureHash'];
+        // Lấy orderInfo
+        const orderInfo =
+            req.query.orderInfo ||
+            "Thanh toan mac dinh";
 
-    // Xóa hash để verify
-    delete vnp_Params['vnp_SecureHash'];
-    delete vnp_Params['vnp_SecureHashType'];
+        // Tạo orderId
+        const orderId =
+            moment().format("YYYYMMDDHHmmss");
 
-    // Sort param
-    vnp_Params = Object.keys(vnp_Params)
-        .sort()
-        .reduce((obj, key) => {
-            obj[key] = vnp_Params[key];
-            return obj;
-        }, {});
+        // Ngày tạo
+        const createDate =
+            moment().format("YYYYMMDDHHmmss");
 
-    // Tạo hash verify
-    const signData =
-        new URLSearchParams(vnp_Params).toString();
+        // Params VNPAY
+        let vnp_Params = {
 
-    const hmac =
-        crypto.createHmac("sha512", secretKey);
+            vnp_Version: "2.1.0",
 
-    const signed =
-        hmac
-            .update(Buffer.from(signData, 'utf-8'))
-            .digest("hex");
+            vnp_Command: "pay",
 
-    // Check hash
-    if (secureHash === signed) {
+            vnp_TmnCode: CONFIG.tmnCode,
 
-        const responseCode =
-            vnp_Params['vnp_ResponseCode'];
+            vnp_Locale: "vn",
 
-        // Thành công
-        if (responseCode === '00') {
+            vnp_CurrCode: "VND",
 
-            res.status(200).json({
-                status: "success",
-                message: "Thanh toán thành công",
+            vnp_TxnRef: orderId,
 
-                orderId:
-                    vnp_Params['vnp_TxnRef'],
+            vnp_OrderInfo: orderInfo,
 
-                amount:
-                    vnp_Params['vnp_Amount'] / 100,
+            vnp_OrderType: "other",
 
-                orderInfo:
-                    vnp_Params['vnp_OrderInfo']
-            });
+            // VNPAY yêu cầu x100
+            vnp_Amount: amount * 100,
 
-        } else {
+            vnp_ReturnUrl: CONFIG.returnUrl,
 
-            res.status(200).json({
-                status: "failed",
-                message: "Thanh toán thất bại",
-                responseCode: responseCode
-            });
-        }
+            vnp_IpAddr: getClientIp(req),
 
-    } else {
+            vnp_CreateDate: createDate
+        };
 
-        res.status(400).json({
-            status: "failed",
-            message: "Chữ ký không hợp lệ"
+        // Sort params
+        vnp_Params = sortObject(vnp_Params);
+
+        // Query string
+        const signData =
+            new URLSearchParams(vnp_Params).toString();
+
+        // Hash
+        const secureHash =
+            createSecureHash(
+                vnp_Params,
+                CONFIG.secretKey
+            );
+
+        // Final URL
+        const paymentUrl =
+            `${CONFIG.vnpUrl}?${signData}&vnp_SecureHash=${secureHash}`;
+
+        // Response
+        return res.status(200).json({
+
+            status: "success",
+
+            orderId,
+
+            amount,
+
+            orderInfo,
+
+            paymentUrl
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            status: "error",
+
+            message: error.message
         });
     }
 });
 
-// ======================
-// LẤY IP CLIENT
-// ======================
-function getClientIp(req) {
+/* =========================
+   RETURN FROM VNPAY
+========================= */
 
-    return (
-        req.headers['x-forwarded-for']
-            ?.split(',')[0]
-            .trim()
-        ||
-        req.headers['x-real-ip']
-        ||
-        req.socket.remoteAddress
-        ||
-        '127.0.0.1'
-    );
-}
+app.get("/api/payment/return", (req, res) => {
 
-// ======================
-// START SERVER
-// ======================
+    try {
+
+        let vnp_Params = req.query;
+
+        // Hash từ VNPAY gửi về
+        const secureHash =
+            vnp_Params.vnp_SecureHash;
+
+        // Xóa hash cũ
+        delete vnp_Params.vnp_SecureHash;
+        delete vnp_Params.vnp_SecureHashType;
+
+        // Sort lại
+        vnp_Params = sortObject(vnp_Params);
+
+        // Tạo hash verify
+        const verifyHash =
+            createSecureHash(
+                vnp_Params,
+                CONFIG.secretKey
+            );
+
+        // Check hash
+        if (secureHash !== verifyHash) {
+
+            return res.status(400).json({
+
+                status: "failed",
+
+                message: "Invalid signature"
+            });
+        }
+
+        // Check trạng thái
+        const isSuccess =
+            vnp_Params.vnp_ResponseCode === "00";
+
+        return res.status(200).json({
+
+            status:
+                isSuccess
+                    ? "success"
+                    : "failed",
+
+            message:
+                isSuccess
+                    ? "Thanh toán thành công"
+                    : "Thanh toán thất bại",
+
+            orderId:
+                vnp_Params.vnp_TxnRef,
+
+            amount:
+                vnp_Params.vnp_Amount / 100,
+
+            orderInfo:
+                vnp_Params.vnp_OrderInfo,
+
+            responseCode:
+                vnp_Params.vnp_ResponseCode
+        });
+
+    } catch (error) {
+
+        return res.status(500).json({
+
+            status: "error",
+
+            message: error.message
+        });
+    }
+});
+
+/* =========================
+   HOME
+========================= */
+
+app.get("/", (req, res) => {
+
+    res.json({
+
+        status: "success",
+
+        message: "VNPAY API is running"
+    });
+});
+
+/* =========================
+   START SERVER
+========================= */
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
 
-    console.log("-----------------------------------------");
+    console.log("====================================");
 
     console.log(
-        `SERVER ĐANG CHẠY TẠI:
-https://bookingmovie.onrender.com`
+        `SERVER RUNNING:
+http://localhost:${PORT}`
     );
+
+    console.log("====================================");
+
+    console.log("TEST API:");
 
     console.log(
-        `TEST:
-https://bookingmovie.onrender.com/api/payment/create-url?amount=1000&orderInfo=TEST+POSTMAN`
+        `https://bookingmovie.onrender.com/api/payment/create-url?amount=1000&orderInfo=TEST+POSTMAN`
     );
 
-    console.log("-----------------------------------------");
+    console.log("====================================");
 });
