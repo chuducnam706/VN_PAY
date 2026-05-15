@@ -21,7 +21,7 @@ const CONFIG = {
     tmnCode: "VBDRQZWZ",
 
     secretKey:
-        "KRM9ZW6JP06FMWF348THT70QQ6AQ3SVU",
+        "317G3BIQ2HDFXVVA0T0D3AUZKG74IDIQ",
 
     vnpUrl:
         "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
