@@ -27,7 +27,7 @@ const CONFIG = {
         "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
 
     returnUrl:
-        "https://bookingmovie.onrender.com/api/payment/return"
+        "https://vn-pay-a6i2.onrender.com/api/payment/return"
 };
 
 /* =========================
